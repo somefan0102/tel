@@ -4,6 +4,8 @@
 
 #include "tel.h"
 
+struct Line;
+
 struct Buffer {
     char *filename;
     FILE *fp;
@@ -21,18 +23,24 @@ enum {
 
 static int tel_buffer_slurp(struct Buffer *buffer);
 
-struct Buffer *tel_buffer_open(char *name, int my_line, int my_col) {
+struct Buffer *tel_buffer_open(char *name, unsigned int my_line, unsigned int my_col) {
     int len = strlen(name)+1;
     struct Buffer *buffer = NULL;
 
     if (!(buffer = malloc(sizeof(struct Buffer)))) {
         fprintf(stderr, "Error: Allocation for buffer \"%s\" failed.\n", name);
         return NULL;
-    } else if (!(buffer->filename = malloc((sizeof(char) * len))) || !memcpy(buffer->filename, name, len)) {
+    }
+
+    buffer->line = my_line;
+    buffer->col = my_col;
+    buffer->focus = buffer->head = NULL;
+
+    if (!(buffer->filename = malloc((sizeof(char) * len))) || !memcpy(buffer->filename, name, len)) {
         fprintf(stderr, "Error: Allocation for buffer name \"%s\" failed.\n", name);
         tel_buffer_close(buffer);
         return NULL;
-    } else if (!(buffer->fp = fopen(buffer->filename, "r+"))) {
+    } else if (!(buffer->fp = fopen(buffer->filename, "rb+"))) {
         fprintf(stderr, "Error: Opening buffer \"%s\" failed.\n", buffer->filename);
         tel_buffer_close(buffer);
         return NULL;
@@ -41,23 +49,19 @@ struct Buffer *tel_buffer_open(char *name, int my_line, int my_col) {
         tel_buffer_close(buffer);
         return NULL;
     }
-    
-    buffer->line = my_line;
-    buffer->col = my_col;
-    buffer->head = NULL;
 
     return buffer;
 }
 
 int tel_buffer_close(struct Buffer *buffer) {
-    struct Line *worm = buffer->head, *next = NULL;
+    struct Line *next = NULL;
 
-    if (worm) {
-        while (worm) {
-            next = worm->next;
-            free(worm->data);
-            free(worm);
-            worm = next;
+    if (buffer->head) {
+        while (buffer->head) {
+            next = buffer->head->next;
+            free(buffer->head->data);
+            free(buffer->head);
+            buffer->head = next;
         }
     }
 
@@ -65,7 +69,7 @@ int tel_buffer_close(struct Buffer *buffer) {
         fprintf(stderr, "Error: Closing buffer \"%s\" failed.\n", buffer->filename);
         return 1;
     }
-    
+
     free(buffer->filename);
     free(buffer);
 
@@ -89,12 +93,13 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
     rewind(buffer->fp);
 
     while (ch != EOF) {
-        unsigned int i = 0, nbytes = 1;
+        unsigned int i = 0, nbytes = 0;
 
         if (!(buffer->focus = malloc(sizeof(struct Line)))) {
             fprintf(stderr, "Error: Allocation for a line for buffer \"%s\" failed.\n", buffer->filename);
             return 1;
         }
+
         if (!buffer->head) buffer->head = buffer->focus;
         if (prev) prev->next = buffer->focus;
         buffer->focus->size = 0;
@@ -102,22 +107,23 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
         buffer->focus->next = NULL;
 
         start = ftell(buffer->fp);
-        while ((ch = fgetc(buffer->fp)) != NEWLINE && ch != EOF) nbytes++;
+        while ((ch = fgetc(buffer->fp)) != LINE_FEED && ch != EOF) nbytes++;
 
         if (fseek(buffer->fp, start, SEEK_SET)) {
             fprintf(stderr, "Error: Seeking in buffer \"%s\" failed.\n", buffer->filename);
             return 1;
         }
-        
+
         buffer->focus->size = nbytes + LINE_EXTRA + 1;
         if (!(buffer->focus->data = malloc(sizeof(char) * buffer->focus->size))) {
             fprintf(stderr, "Error: Line allocation for \"%s\" failed.\n", buffer->filename);
             return 1;
         }
 
-        for (i = 0; (ch = fgetc(buffer->fp)) != NEWLINE && ch != EOF; i++)
+        for (i = 0; (ch = fgetc(buffer->fp)) != LINE_FEED && ch != EOF; i++)
             buffer->focus->data[i] = ch;
-        buffer->focus->data[i++] = ch;
+
+        buffer->focus->data[i++] = LINE_FEED;
         buffer->focus->data[i] = '\0';
         prev = buffer->focus;
     }
