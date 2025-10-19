@@ -22,9 +22,10 @@ enum {
 };
 
 static int tel_buffer_slurp(struct Buffer *buffer);
+static int tel_buffer_refocus(struct Buffer *buffer);
 
 struct Buffer *tel_buffer_open(char *name, unsigned int my_line, unsigned int my_col) {
-    int len = strlen(name)+1;
+    int len = strlen(name) + 1;
     struct Buffer *buffer = NULL;
 
     if (!(buffer = malloc(sizeof(struct Buffer)))) {
@@ -128,11 +129,70 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
         prev = buffer->focus;
     }
 
+    tel_buffer_refocus(buffer);
+
     return 0;
 }
 
-/* TODO */
+static int tel_buffer_refocus(struct Buffer *buffer) {
+    unsigned int left = buffer->line;
+
+    buffer->focus = buffer->head;
+    while (--left && buffer->focus) buffer->focus = buffer->focus->next;
+
+    if (!buffer->focus) {
+        fprintf(stderr, "Error: Line out of bounds.\n", buffer->filename);
+        return 1;
+    }
+
+    return 0;
+}
+
 int tel_buffer_move(struct Buffer *buffer, int arrow) {
+    if (!buffer->head) {
+        if (tel_buffer_slurp(buffer)) return 1;
+    }
+
+    if (arrow == LEFT) {
+        if (buffer->col > 1) {
+            buffer->col--;
+        } else if (buffer->line > 1) {
+            buffer->line--;
+            if (tel_buffer_refocus(buffer)) return 1;
+            buffer->col = 1;
+            while (buffer->focus->data[buffer->col]) buffer->col++;
+        }
+    } else if (arrow == RIGHT) {
+        if (buffer->focus->data[buffer->col]) {
+            buffer->col++;
+        } else if (buffer->focus->next) {
+            buffer->line++;
+            buffer->col = 1;
+            buffer->focus = buffer->focus->next;
+        }
+    } else if (arrow == UP) {
+        if (buffer->line > 1) {
+            int saved_col = buffer->col;
+
+            buffer->line--;
+            if (tel_buffer_refocus(buffer)) return 1;
+            buffer->col = 0;
+            while (buffer->focus->data[buffer->col] && saved_col > buffer->col) buffer->col++;
+        }
+    } else if (arrow == DOWN) {
+        if (buffer->focus->next) {
+            int saved_col = buffer->col;
+
+            buffer->line++;
+            buffer->focus = buffer->focus->next;
+            buffer->col = 0;
+            while (buffer->focus->data[buffer->col] && saved_col > buffer->col) buffer->col++;
+        }
+    } else {
+        fprintf(stderr, "Error: Invalid key.\n", buffer->filename);
+        return 1;
+    }
+
     return 0;
 }
 
