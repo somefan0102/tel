@@ -41,7 +41,7 @@ struct Buffer *tel_buffer_open(char *name, unsigned int my_line, unsigned int my
         fprintf(stderr, "Error: Allocation for buffer name \"%s\" failed.\n", name);
         tel_buffer_close(buffer);
         return NULL;
-    } else if (!(buffer->fp = fopen(buffer->filename, "rb+"))) {
+    } else if (!(buffer->fp = fopen(buffer->filename, "r+"))) {
         fprintf(stderr, "Error: Opening buffer \"%s\" failed.\n", buffer->filename);
         tel_buffer_close(buffer);
         return NULL;
@@ -78,8 +78,27 @@ int tel_buffer_close(struct Buffer *buffer) {
 }
 
 int tel_buffer_save(struct Buffer *buffer) {
-    if (fflush(buffer->fp)) {
-        fprintf(stderr, "Error: Saving buffer to file \"%s\" failed.\n", buffer->filename);
+    struct Line *scan = NULL;
+
+    if (!buffer->head)
+        if (tel_buffer_slurp(buffer)) return 1;
+
+    if (fclose(buffer->fp) || !(buffer->fp = fopen(buffer->filename, "w"))) {
+        fprintf(stderr, "Error: Reading buffer for saving \"%s\" failed.\n", buffer->filename);
+        return 1;
+    }
+
+    scan = buffer->head;
+    while (scan) {
+        unsigned int count = 0;
+        while (scan->data[count]) count++;
+        if (!scan->next && scan->data[0] == LINE_FEED) break;
+        fwrite(scan->data, sizeof(char), count, buffer->fp);
+        scan = scan->next;
+    }
+
+    if (fclose(buffer->fp) || !(buffer->fp = fopen(buffer->filename, "r+"))) {
+        fprintf(stderr, "Error: Reopening buffer after saving \"%s\" failed.\n", buffer->filename);
         return 1;
     }
 
@@ -91,7 +110,13 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
     long start = 0L;
     int ch = 0;
 
-    rewind(buffer->fp);
+    if (buffer->head) {
+        fprintf(stderr, "Error: Buffer contents of \"%s\" already allocated.\n");
+        return 1;
+    } else if (fseek(buffer->fp, start, SEEK_SET)) {
+        fprintf(stderr, "Error: Seeking in buffer \"%s\" failed.\n", buffer->filename);
+        return 1;
+    }
 
     while (ch != EOF) {
         unsigned int i = 0, nbytes = 0;
@@ -135,7 +160,12 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
 }
 
 static int tel_buffer_refocus(struct Buffer *buffer) {
-    unsigned int left = buffer->line;
+    unsigned int left = NULL;
+
+    if (!buffer->head)
+        if (tel_buffer_slurp(buffer)) return 1;
+
+    left = buffer->line;
 
     buffer->focus = buffer->head;
     while (--left && buffer->focus) buffer->focus = buffer->focus->next;
@@ -149,9 +179,8 @@ static int tel_buffer_refocus(struct Buffer *buffer) {
 }
 
 int tel_buffer_move(struct Buffer *buffer, int arrow) {
-    if (!buffer->head) {
+    if (!buffer->head)
         if (tel_buffer_slurp(buffer)) return 1;
-    }
 
     if (arrow == LEFT) {
         if (buffer->col > 1) {
@@ -196,8 +225,46 @@ int tel_buffer_move(struct Buffer *buffer, int arrow) {
     return 0;
 }
 
-/* TODO */
 int tel_buffer_insert(struct Buffer *buffer, char ch) {
+    unsigned int pos = 0;
+
+    if (!buffer->head)
+        if (tel_buffer_slurp(buffer)) return 1;
+
+    if (ch <= 0) {
+        fprintf(stderr, "Error: Invalid character.\n");
+        return 1;
+    }
+
+    while (buffer->focus->data[pos]) pos++;
+    pos++;
+
+    if (pos >= buffer->focus->size) {
+        int i = 0;
+        char *new_data = NULL;
+        unsigned int new_size = buffer->focus->size + LINE_EXTRA;
+
+        if (!(new_data = malloc(sizeof(char) * new_size))) {
+            fprintf(stderr, "Error: Line reallocation for \"%s\" failed.\n", buffer->filename);
+            return 1;
+        }
+
+        for (i = 0; i < new_size + 1; i++)
+            new_data[i] = buffer->focus->data[i];
+
+        free(buffer->focus->data);
+        buffer->focus->data = new_data;
+        buffer->focus->size = new_size;
+    }
+
+    while (pos > buffer->col - 1) {
+        buffer->focus->data[pos] = buffer->focus->data[pos - 1];
+        pos--;
+    }
+
+    buffer->focus->data[pos] = ch;
+    buffer->col++;
+
     return 0;
 }
 
