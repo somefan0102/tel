@@ -24,6 +24,7 @@ enum {
 static int tel_buffer_slurp(struct Buffer *buffer);
 static int tel_buffer_refocus(struct Buffer *buffer);
 static void tel_buffer_freebuf(struct Buffer *buffer);
+static int tel_buffer_mode(struct Buffer *buffer, char *mode);
 
 struct Buffer *tel_buffer_open(char *name, int *error, unsigned int line, unsigned int col) {
     int slurp_exit = 0, len = strlen(name) + 1;
@@ -43,7 +44,7 @@ struct Buffer *tel_buffer_open(char *name, int *error, unsigned int line, unsign
     } else if (!memcpy(buffer->filename, name, len)) {
         *error = TEL_ERROR_STRDUP_FAILED;
     } else if (!(buffer->fp = fopen(buffer->filename, "r+"))) {
-        *error = TEL_ERROR_OPEN_READ;
+        *error = TEL_ERROR_REOPEN;
     } else if ((slurp_exit = tel_buffer_slurp(buffer))) {
         *error = slurp_exit;
     }
@@ -73,11 +74,19 @@ void tel_buffer_close(struct Buffer *buffer) {
     free(buffer);
 }
 
+static int tel_buffer_mode(struct Buffer *buffer, char *mode) {
+    if (buffer->fp) fclose(buffer->fp);
+    if (!(buffer->fp = fopen(buffer->filename, mode))) {
+        return TEL_ERROR_REOPEN;
+    }
+
+    return TEL_SUCCESS;
+}
+
 int tel_buffer_save(struct Buffer *buffer) {
     struct Line *scan = buffer->head;
 
-    if (fclose(buffer->fp) || !(buffer->fp = fopen(buffer->filename, "w")))
-        return TEL_ERROR_OPEN_WRITE;
+    if (tel_buffer_mode(buffer, "w")) return TEL_ERROR_REOPEN;
 
     while (scan) {
         unsigned int count = 0;
@@ -87,8 +96,7 @@ int tel_buffer_save(struct Buffer *buffer) {
         scan = scan->next;
     }
 
-    if (fclose(buffer->fp) || !(buffer->fp = fopen(buffer->filename, "r+")))
-        return TEL_ERROR_OPEN_READ;
+    if (tel_buffer_mode(buffer, "r+")) return TEL_ERROR_REOPEN;
 
     return TEL_SUCCESS;
 }
