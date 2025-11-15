@@ -18,7 +18,7 @@ enum {
     TEL_ERROR_LINE_OOB
 };
 
-Buffer *tel_buffer_open(char *name, int *error, unsigned int line, unsigned int col);
+Buffer *tel_buffer_open(char *name, int *error, size_t line, size_t col);
 void tel_buffer_close(Buffer *buffer);
 int tel_buffer_move(Buffer *buffer, int arrow);
 int tel_buffer_render(Buffer *buffer);

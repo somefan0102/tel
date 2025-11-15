@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "tel.h"
 
@@ -9,11 +9,11 @@ struct Line;
 struct Buffer {
     char *filename;
     FILE *fp;
-    unsigned int line, col;
+    size_t line, col;
     struct Line {
         struct Line *next;
         char *data;
-        unsigned int size;
+        size_t size;
     } *head, *focus;
 };
 
@@ -26,7 +26,7 @@ static int tel_buffer_refocus(struct Buffer *buffer);
 static void tel_buffer_freebuf(struct Buffer *buffer);
 static int tel_buffer_mode(struct Buffer *buffer, char *mode);
 
-struct Buffer *tel_buffer_open(char *name, int *error, unsigned int line, unsigned int col) {
+struct Buffer *tel_buffer_open(char *name, int *error, size_t line, size_t col) {
     int slurp_exit = 0, len = strlen(name) + 1;
     struct Buffer *buffer = NULL;
 
@@ -90,7 +90,7 @@ int tel_buffer_save(struct Buffer *buffer) {
     if (tel_buffer_mode(buffer, "w")) return TEL_ERROR_REOPEN;
 
     while (scan) {
-        unsigned int count = 0;
+        size_t count = 0;
         while (scan->data[count]) count++;
         if (!scan->next && scan->data[0] == LINE_FEED) break;
         fwrite(scan->data, sizeof(char), count, buffer->fp);
@@ -111,7 +111,7 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
     if (fseek(buffer->fp, start, SEEK_SET)) return TEL_ERROR_FSEEK_FAILED;
 
     while (ch != EOF) {
-        unsigned int i = 0;
+        size_t i = 0;
 
         if (!(buffer->focus = malloc(sizeof(struct Line))))
             return TEL_ERROR_MALLOC_FAILED;
@@ -150,7 +150,7 @@ static int tel_buffer_slurp(struct Buffer *buffer) {
 }
 
 static int tel_buffer_refocus(struct Buffer *buffer) {
-    unsigned int left = buffer->line;
+    size_t left = buffer->line;
 
     buffer->focus = buffer->head;
     while (--left && buffer->focus) buffer->focus = buffer->focus->next;
