@@ -59,6 +59,7 @@ struct Buffer *tel_buffer_open(char *name, int *error, unsigned int line, unsign
 
 static void tel_buffer_freebuf(struct Buffer *buffer) {
     struct Line *next = NULL;
+
     while (buffer->head) {
         next = buffer->head->next;
         free(buffer->head->data);
@@ -159,15 +160,16 @@ static int tel_buffer_refocus(struct Buffer *buffer) {
     return TEL_SUCCESS;
 }
 
-/* TODO */
 int tel_buffer_move(struct Buffer *buffer, int arrow) {
+    int saved_col = buffer->col;
+
     if (arrow == LEFT) {
         if (buffer->col > 1) {
             buffer->col--;
         } else if (buffer->line > 1) {
             buffer->line--;
-            if (tel_buffer_refocus(buffer)) return 1;
             buffer->col = 1;
+            tel_buffer_refocus(buffer);
             while (buffer->focus->data[buffer->col]) buffer->col++;
         }
     } else if (arrow == RIGHT) {
@@ -178,26 +180,16 @@ int tel_buffer_move(struct Buffer *buffer, int arrow) {
             buffer->col = 1;
             buffer->focus = buffer->focus->next;
         }
-    } else if (arrow == UP) {
-        if (buffer->line > 1) {
-            int saved_col = buffer->col;
-
-            buffer->line--;
-            if (tel_buffer_refocus(buffer)) return 1;
-            buffer->col = 0;
-            while (buffer->focus->data[buffer->col] && saved_col > buffer->col) buffer->col++;
-        }
-    } else if (arrow == DOWN) {
-        if (buffer->focus->next) {
-            int saved_col = buffer->col;
-
-            buffer->line++;
-            buffer->focus = buffer->focus->next;
-            buffer->col = 0;
-            while (buffer->focus->data[buffer->col] && saved_col > buffer->col) buffer->col++;
-        }
-    } else {
-        return 2;
+    } else if (arrow == UP && buffer->line > 1) {
+        buffer->line--;
+        buffer->col = 0;
+        tel_buffer_refocus(buffer);
+        while (buffer->focus->data[buffer->col] && saved_col > buffer->col) buffer->col++;
+    } else if (arrow == DOWN && buffer->focus->next) {
+        buffer->line++;
+        buffer->col = 0;
+        buffer->focus = buffer->focus->next;
+        while (buffer->focus->data[buffer->col] && saved_col > buffer->col) buffer->col++;
     }
 
     return TEL_SUCCESS;
